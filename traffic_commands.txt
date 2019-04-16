@@ -23,7 +23,7 @@ rowdata = LOAD '/new/hi_cleantraffic' AS (traff:chararray);
 
 convfar = FOREACH rowdata GENERATE FLATTEN(miles_convert0.hi_miles(traff));
 
-STORE convfar INTO '/new/hi_cleantraffic' USING PigStorage(' ');
+STORE convfar INTO '/new/hi_cleantraffic1' USING PigStorage(' ');
 
 
 
