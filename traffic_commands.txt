@@ -1,0 +1,40 @@
+#PIG
+
+Read = LOAD '/new/traffic.csv' USING PigStorage(',') AS(year:float,collection:float,start:float,end:float,distance:float,cycles:float,bikes:float,vans:float,trucks:float)
+
+clean = FILTER Read BY year IS NOT NULL;
+
+Grp1 = GROUP clean BY year; 
+
+grp2 = FOREACH Grp1 GENERATE group AS year,SUM(clean.distance) AS distance,SUM(clean.vans) AS vans,SUM(clean.trucks) AS trucks; 
+
+sorted = ORDER grp2 BY year;
+
+STORE sorted INTO '/new/hi_cleantraffic' USING PigStorage(' ');
+
+
+
+
+
+#PIG-UDF
+REGISTER 'hdfs:///new/new_traffic1.py' USING jython as miles_convert0;
+
+rowdata = LOAD '/new/hi_cleantraffic' AS (traff:chararray);
+
+convfar = FOREACH rowdata GENERATE FLATTEN(miles_convert0.hi_miles(traff));
+
+STORE convfar INTO '/new/hi_cleantraffic' USING PigStorage(' ');
+
+
+
+#HIVE
+create external table freight1(year float,kms float,vans float,trucks float) row format delimited fields terminated by ' ' stored as textfile location '/new/hi_cleantraffic1';
+
+select * from freight1;
+
+
+
+#HIVE-UDF
+add file hdfs:///new/hive_traffic3.py;
+
+select transform(year,kms,vans,trucks) using 'python hive_traffic3.py' as(year,kms,totalfreight) from freight1;
