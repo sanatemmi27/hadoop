@@ -1,0 +1,122 @@
+step:1 
+Create Directory and put file in to hadoop
+ hadoop fs -mkdir /Data/
+ hadoop fs -put /home/cloudera/Desktop/healthrow.txt /Data/
+
+
+
+
+step:2
+Type pig in terminal
+
+
+
+
+step:3
+Reading = LOAD '/Data/heathrow.txt' USING PigStorage('\t') AS (year:chararray,month:float,maxtemp:float,mintemp:float,frostday:chararray,rainfall:chararray,sunshine:chararray);
+	
+
+
+
+step:4 
+Data Cleaning :
+Data = FILTER Reading BY maxtemp IS NOT NULL AND mintemp IS NOT NULL AND year != 'yyyy';
+
+Datavals = FOREACH Data GENERATE year,month,maxtemp,mintemp,frostday,rainfall,REPLACE(sunshine,'---','') AS sunshine;
+
+
+Datavals1 = FOREACH Datavals GENERATE year,month,maxtemp,mintemp,frostday,rainfall,REPLACE(sunshine,'#','') AS sunshine;
+
+
+Datavals2 = FOREACH Datavals1 GENERATE year,month,maxtemp,mintemp,frostday,rainfall,REPLACE(sunshine,'Provisional','') AS sunshine;
+
+
+Datavals3 = FOREACH Datavals2 GENERATE year,month,maxtemp,mintemp,frostday,rainfall,REPLACE(sunshine,' ','') AS sunshine;
+
+
+SortReadings = ORDER Datavals3 BY year ASC,month ASC;
+
+
+STORE SortReadings INTO '/Data/hi_heathrowclean' USING PigStorage(' ');
+
+
+
+
+step:5 
+Pig python File(heathrow_udf.py)
+
+@outputSchema("heathrow:{(Year:chararray,Month:float,maxtemp:float,mintemp:float,frostday:chararray,rainfall:chararray,sunshine:chararray)}")
+def fahrenheit(heathrow):
+	Year,Month,maxtemp,mintemp,frostday,rainfall,sunshine = heathrow.split(' ')
+	maxtemp_1 = float(maxtemp) * 9/5 + 32
+	mintemp_1 = float(mintemp) * 9/5 + 32
+	return Year,Month,maxtemp_1,mintemp_1,frostday,rainfall,sunshine
+
+
+
+
+step:6
+Register Python with Pig
+
+REGISTER 'hdfs:///Data/Pyheath.py' USING jython as hi_convert;
+
+rowdata = LOAD '/Data/hi_heathrowclean' AS (heathrow:chararray);
+
+ConvFar =  FOREACH rowdata GENERATE FLATTEN(hi_convert.fahrenheit(heathrow));
+
+DUMP ConvFar;
+
+STORE ConvFar INTO '/Data/hi_heathrowclean1' USING PigStorage(' ');
+
+
+
+
+
+
+step:7
+Create Hive Table(degreee)
+
+Drop table if exists degreee;
+
+create external table degree(
+year float,
+month float,
+maxtemp float,
+mintemp float,
+frostday float,
+rainfall float,
+sunshine float)
+row format delimited fields terminated by ' '
+Stored as textfile location '/Data/hi_heathrowclean1'; #Note: same file as stored in pig
+
+
+
+
+step:8
+Hive Python File(mm_inches.py)
+
+import sys
+import string
+
+while True:
+	line=sys.stdin.readline()
+	if not line:
+		break
+	row=string.strip(line, "\n")
+	year,month,maxtemp,mintemp,frostday,rainfall,sunshine= string.split(row, "\t")
+	rainfall= float(rainfall)/25.4
+	print "\t".join([year,month,maxtemp,mintemp,frostday,str(rainfall),sunshine])
+
+hadoop fs -put /home/cloudera/Desktop/mm_inches.py /Data
+
+
+
+
+Step:9 
+
+
+add file hdfs:///Data/mm_inches.py;
+SELECT TRANSFORM(year,month,maxtemp,mintemp,frostday,rainfall,sunshine) USING 'python mm_inches.py' AS (year float,month float,maxtemp float,mintemp float,frostday float,rainfall float,sunshine float) FROM degree;
+
+
+
